@@ -9,32 +9,44 @@ public class McSolution {
     /**
      * 两岸的传教士总人数
      */
-    private static int M = 3;
+    private static int M = 7;
 
     /**
      * 两岸的野人总人数
      */
-    private static int C = 3;
+    private static int C = 7;
 
     /**
      * 船的总载量
      */
-    private static int K = 2;
+    private static int K = 3;
+
+    /**
+     * 船的初始状态
+     */
+    private static int B = 1;
 
     /**
      * 用于存储各种状态的记忆
      * 1表示已经进入close_set, 0表示没有访问过，-1表示该状态已访问过且不安全
      * 默认值为0
      */
-    private static int[][][] set = new int[4][4][2];
+    private static int[][][] set;
 
     /**
      * 用于记录有效状态空间的父节点映射
      */
-    public static Map<String,StateArray> parentMap = new HashMap<String,StateArray>();
+    public static Map<String, StateArray> parentMap = new HashMap<String, StateArray>();
 
     public static void main(String[] args) {
-        beginBoating();
+        set = new int[M+1][C+1][2];
+        StateArray solutionState = beginBoating();
+        if (solutionState != null) {
+            System.out.println("找到M-C问题(" + M + "," + C + "," + B + ")的解:");
+            printSolution(solutionState);
+        } else {
+            System.err.println("M-C问题(" + M + "," + C + "," + B + ")无解!");
+        }
     }
 
     /**
@@ -125,7 +137,14 @@ public class McSolution {
         return false;
     }
 
-    public static boolean checkIsClosed(int m,int c,int b) {
+    /**
+     * 检查状态是否已经添加到close_set
+     * @param m
+     * @param c
+     * @param b
+     * @return
+     */
+    public static boolean checkIsClosed(int m, int c, int b) {
         if (set[m][c][b] == 1) {
             return true;
         } else {
@@ -136,63 +155,83 @@ public class McSolution {
     /**
      * 模拟左右往返划船
      */
-    public static void beginBoating() {
+    public static StateArray beginBoating() {
         int m = M;
         int c = C;
-        int b = 1;
+        int b = B;
         StateArray lastState = new StateArray(m, c, b);
         lastState.setParent(null);
+        set[m][c][b] = 1;
         while (!checkFindSolution(m, c, b)) {
             List<StateArray> optionalStates = new ArrayList<>();
             if (b == 1) {
                 b = 0;
-                for (int i = K, j = 0; i >= 0; i--, j++) {
-                    if (checkSafe(m - i, c - j, b) && !checkIsClosed(m - i, c - j, b)) {
-                        String parentKey = (m-i) +","+(c-j)+","+b;
-                        StateArray sonState = new StateArray(m - i, c - j, b);
-
-                        if (parentMap.containsKey(parentKey)){
-                            sonState.setParent(parentMap.get(parentKey));
-                        }else{
-                            parentMap.put(parentKey, lastState);
-                            sonState.setParent(lastState);
+                for (int k = K; k > 0; k--) {
+                    for (int i = k, j = 0; i >= 0; i--, j++) {
+                        if (m - i < 0 || c - j < 0) {
+                            continue;
                         }
-                        optionalStates.add(sonState);
+                        if (checkSafe(m - i, c - j, b) && !checkIsClosed(m - i, c - j, b)) {
+                            String parentKey = (m - i) + "," + (c - j) + "," + b;
+                            StateArray sonState = new StateArray(m - i, c - j, b);
+                            if (parentMap.containsKey(parentKey)) {
+                                sonState.setParent(parentMap.get(parentKey));
+                            } else {
+                                parentMap.put(parentKey, lastState);
+                                sonState.setParent(lastState);
+                            }
+                            optionalStates.add(sonState);
+                        }
                     }
                 }
             } else {
                 b = 1;
-                for (int i = K, j = 0; i >= 0; i--, j++) {
-                    if (checkSafe(m+i,c+j,b) && !checkIsClosed(m+i,c+j,b)) {
-                        String parentKey = (m+i) +","+(c+j)+","+b;
-                        StateArray sonState = new StateArray(m+i, c+j, b);
-                        if (parentMap.containsKey(parentKey)){
-                            sonState.setParent(parentMap.get(parentKey));
-                        }else{
-                            parentMap.put(parentKey, lastState);
-                            sonState.setParent(lastState);
+                for (int k = 1; k <= K; k++) {
+                    for (int i = k, j = 0; i >= 0; i--, j++) {
+                        if (m + i > M || c + j > C) {
+                            continue;
                         }
-                        optionalStates.add(sonState);
+                        if (checkSafe(m + i, c + j, b) && !checkIsClosed(m + i, c + j, b)) {
+                            String parentKey = (m + i) + "," + (c + j) + "," + b;
+                            StateArray sonState = new StateArray(m + i, c + j, b);
+                            if (parentMap.containsKey(parentKey)) {
+                                sonState.setParent(parentMap.get(parentKey));
+                            } else {
+                                parentMap.put(parentKey, lastState);
+                                sonState.setParent(lastState);
+                            }
+                            optionalStates.add(sonState);
+                        }
                     }
                 }
             }
+            //如果该分支没有可行子分支，禁用这个分支并开始回溯，否则继续向下遍历
             if (optionalStates.isEmpty()) {
-                throw new RuntimeException("该问题无解！");
+                set[lastState.getM()][lastState.getC()][lastState.getB()] = -1;
+                if (lastState.getParent() != null) {
+                    lastState = lastState.getParent();
+                } else {
+                    return null;
+                }
+            } else {
+                lastState = getBestState(optionalStates);
             }
-            lastState = getBestState(optionalStates);
             m = lastState.getM();
             c = lastState.getC();
             b = lastState.getB();
         }
-        printSolution(lastState);
+        return lastState;
     }
 
-    public static void  printSolution(StateArray lastState) {
+    /**
+     * 输出M-C问题的解
+     *
+     * @param lastState
+     */
+    public static void printSolution(StateArray lastState) {
         if (lastState.getParent() != null) {
             printSolution(lastState.getParent());
         }
         System.out.println("(" + lastState.getM() + "," + lastState.getC() + "," + lastState.getB() + ")");
     }
-
-
 }
